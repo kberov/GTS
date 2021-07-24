@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -12,6 +13,10 @@ import (
 	"strconv"
 	"strings"
 )
+
+type Page struct {
+	Message string
+}
 
 var port int
 
@@ -30,6 +35,9 @@ var re_xr = regexp.MustCompile(xr)
 var re_cons = regexp.MustCompile("(?i)" + consonants)
 var re_cons_qu = regexp.MustCompile(cons_qu)
 var re_last = regexp.MustCompile(`^(\w+)([\.\?\!])$`)
+
+// A template instance prepared, once and executed many times.
+var t = template.Must(template.ParseFiles("templates/index.html"))
 
 func main() {
 	parseFlags()
@@ -58,33 +66,11 @@ func indexPage(w http.ResponseWriter, r *http.Request) {
 	pathNotFound := ""
 	if r.URL.Path != "/" {
 		w.WriteHeader(http.StatusNotFound)
-		pathNotFound = `<b style="color:red">The page "` + r.URL.Path + ` was not found!</b>`
+		pathNotFound = `The page "` + r.URL.Path + ` was not found!`
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `
-<html>
-  <head>
-	<title>Go Translator Service</title>
-  </head>
-  <body>
-    <h1>Go Translator Service</h1>
-	%s
-    <p>To translate a word, please execute a POST request to <a
-    href="/word">/word</a> with JSON body like
-    <code>{“english-word”:”&lt;a single English word&gt;”}</code>,
-    which will be translated into Gophers' language and appended to a
-    list of translated words.</p>
-    <p>To translate a sentence, please execute a POST request to <a
-    href="/sentence">/sentence</a> with JSON body like
-    <code>{“english-sentence”:”&lt;the English sentence&gt;”}</code>,
-    which will be translated into Gophers' language and appended to a
-    list of translated sentences.</p>
-	<p>To retrieve the list of words
-    added in JSON format, make a GET request to <a
-    href="/history">/history</a>.</p>
-  </body>
-<html>
-`, pathNotFound)
+	p := &Page{Message: pathNotFound}
+	t.Execute(w, p)
 }
 
 func addWord(res http.ResponseWriter, req *http.Request) {

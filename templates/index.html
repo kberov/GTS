@@ -1,0 +1,23 @@
+<html>
+  <head>
+    <meta charset="utf-8">
+	<title>Go Translator Service</title>
+  </head>
+  <body>
+    <h1>Go Translator Service</h1>
+	<b style="color:red">{{.Message}}</b>
+    <p>To translate a word, please execute a POST request to <a
+    href="/word">/word</a> with JSON body like
+    <code>{“english-word”:”&lt;a single English word&gt;”}</code>,
+    which will be translated into Gophers' language and appended to a
+    list of translated words.</p>
+    <p>To translate a sentence, please execute a POST request to <a
+    href="/sentence">/sentence</a> with JSON body like
+    <code>{“english-sentence”:”&lt;the English sentence&gt;”}</code>,
+    which will be translated into Gophers' language and appended to a
+    list of translated sentences.</p>
+	<p>To retrieve the list of words
+    added in JSON format, make a GET request to <a
+    href="/history">/history</a>.</p>
+  </body>
+<html>
