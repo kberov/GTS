@@ -10,27 +10,30 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 var port int
-var wordsMap = make(map[string]string, 100)
-var wordsList = make([]string, 100)
-var wordsListMapOrdered = make([]map[string]string, 100)
+
+var wordsMap = make(map[string]string)
+var wordsList []string
+var wordsListMapOrdered []map[string]string
 
 //Prepare regexps to match the provided word for translation
-const vowels = "^(?:a|e|i|o|u)"
-const consonants = "^(b|c|d|f|g|h|j|k|l|m|n|p|q|r|s|t|v|w|x|y|z)"
-const xr = "^xr"
+const vowels = `^(?:a|e|i|o|u)\w+?`
+const consonants = `^(b|c|d|f|g|h|j|k|l|m|n|p|q|r|s|t|v|w|x|y|z)(\w+?)$`
+const xr = "(?i)^xr"
 const cons_qu = "^(" + consonants + "qu" + ")"
 
 var re_vowels = regexp.MustCompile(`(?i)` + vowels)
 var re_xr = regexp.MustCompile(xr)
-var re_const_qu = regexp.MustCompile(cons_qu)
+var re_cons = regexp.MustCompile("(?i)" + consonants)
+var re_cons_qu = regexp.MustCompile(cons_qu)
+var re_last = regexp.MustCompile(`^(\w+)([\.\?\!])$`)
 
 func main() {
 	parseFlags()
 	serve()
-	//fmt.Println("vim-go")
 }
 
 func parseFlags() {
@@ -40,10 +43,10 @@ func parseFlags() {
 }
 
 func serve() {
-	// We register our handlers on server routes using the http.HandleFunc
-	// convenience function.
 	http.HandleFunc("/", indexPage)
 	http.HandleFunc("/word", addWord)
+	http.HandleFunc("/sentence", addSentence)
+	http.HandleFunc("/history", showHistory)
 	// Prepare to run
 	port_string := fmt.Sprintf(":%s", strconv.Itoa(port))
 	log.Printf("Serving at http://localhost%s\n", port_string)
@@ -52,8 +55,10 @@ func serve() {
 }
 
 func indexPage(w http.ResponseWriter, r *http.Request) {
+	pathNotFound := ""
 	if r.URL.Path != "/" {
 		w.WriteHeader(http.StatusNotFound)
+		pathNotFound = `<b style="color:red">The page "` + r.URL.Path + ` was not found!</b>`
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `
@@ -63,16 +68,23 @@ func indexPage(w http.ResponseWriter, r *http.Request) {
   </head>
   <body>
     <h1>Go Translator Service</h1>
+	%s
     <p>To translate a word, please execute a POST request to <a
     href="/word">/word</a> with JSON body like
     <code>{“english-word”:”&lt;a single English word&gt;”}</code>,
     which will be translated into Gophers' language and appended to a
-    list of translated words.</p> <p>To retrieve the list of words
+    list of translated words.</p>
+    <p>To translate a sentence, please execute a POST request to <a
+    href="/sentence">/sentence</a> with JSON body like
+    <code>{“english-sentence”:”&lt;the English sentence&gt;”}</code>,
+    which will be translated into Gophers' language and appended to a
+    list of translated sentences.</p>
+	<p>To retrieve the list of words
     added in JSON format, make a GET request to <a
     href="/history">/history</a>.</p>
   </body>
 <html>
-`)
+`, pathNotFound)
 }
 
 func addWord(res http.ResponseWriter, req *http.Request) {
@@ -101,20 +113,70 @@ func translateAndAdd(word string) string {
 	The words now are: %v
 	The list now is:   %v
 `, wordsMap, wordsList)
-	return word
-}
 
-func orderByEnglish() {
-
+	return wordsMap[word]
 }
 
 func translate(word string) string {
 	if re_vowels.MatchString(word) {
+		log.Printf(`Word matched "%s".`, vowels)
 		return "g" + word
 	}
 	if re_xr.MatchString(word) {
+		log.Printf(`Word matched "%s".`, xr)
 		return "ge" + word
 	}
-	//if(yes, err = re_xr)
-	return fmt.Sprintf("tr%s", word)
+	if re_cons.MatchString(word) {
+		log.Printf(`Word matched "%s".`, consonants)
+		return re_cons.ReplaceAllString(word, "${2}${1}ogo")
+	}
+	if re_cons_qu.MatchString(word) {
+		log.Printf(`Word matched "%s".`, cons_qu)
+		return re_cons.ReplaceAllString(word, "$1ogo")
+	}
+	return word
+}
+
+func addSentence(res http.ResponseWriter, req *http.Request) {
+	englishSentence := make(map[string]string)
+	if req.Method == http.MethodGet {
+		http.Redirect(res, req, "/", http.StatusFound)
+		return
+	}
+	res.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	body, _ := ioutil.ReadAll(req.Body)
+	json.Unmarshal([]byte(body), &englishSentence)
+	log.Printf(`english-sentence: %s\n`, englishSentence["english-sentence"])
+	gopherSentense :=
+		regexp.MustCompile(`\s+`).Split(englishSentence["english-sentence"], -1)
+	lenght := len(gopherSentense)
+	log.Printf("split: %v\n lenght: %d", gopherSentense, lenght)
+
+	if re_last.MatchString(gopherSentense[lenght-1]) {
+		last_two := re_last.FindAllStringSubmatch(gopherSentense[lenght-1], -1)
+		log.Printf("popped: %v\nlast_two:'%v'", gopherSentense, last_two)
+		gopherSentense[lenght-1] = last_two[0][1]
+		gopherSentense = append(gopherSentense, last_two[0][2])
+	}
+	for i := 0; i < lenght; i++ {
+		gopherSentense[i] = translate(gopherSentense[i])
+	}
+
+	fmt.Fprint(res,
+		fmt.Sprintf(`{"gopher-sentense":"%s"}`,
+			strings.Join(gopherSentense, " ")))
+}
+
+func showHistory(res http.ResponseWriter, req *http.Request) {
+	res.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	for i := 0; i < len(wordsList); i++ {
+		translation := make(map[string]string)
+		translation[wordsList[i]] = wordsMap[wordsList[i]]
+		wordsListMapOrdered = append(wordsListMapOrdered, translation)
+	}
+
+	listOfTranslations, _ := json.Marshal(wordsListMapOrdered)
+	fmt.Fprint(res, string(listOfTranslations)+"\n")
 }
