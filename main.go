@@ -7,11 +7,25 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"regexp"
+	"sort"
 	"strconv"
 )
 
 var port int
-var words []map[string]string
+var wordsMap = make(map[string]string, 100)
+var wordsList = make([]string, 100)
+var wordsListMapOrdered = make([]map[string]string, 100)
+
+//Prepare regexps to match the provided word for translation
+const vowels = "^(?:a|e|i|o|u)"
+const consonants = "^(b|c|d|f|g|h|j|k|l|m|n|p|q|r|s|t|v|w|x|y|z)"
+const xr = "^xr"
+const cons_qu = "^(" + consonants + "qu" + ")"
+
+var re_vowels = regexp.MustCompile(`(?i)` + vowels)
+var re_xr = regexp.MustCompile(xr)
+var re_const_qu = regexp.MustCompile(cons_qu)
 
 func main() {
 	parseFlags()
@@ -73,11 +87,34 @@ func addWord(res http.ResponseWriter, req *http.Request) {
 	json.Unmarshal([]byte(body), &englishWord)
 	log.Printf(`english-word: %S\n`, englishWord["english-word"])
 	//TODO: write the translator function
-	fmt.Fprint(res, fmt.Sprintf(`{"gopher-word":%s}`, translateAndAdd(englishWord["english-word"])))
+	fmt.Fprint(res, fmt.Sprintf(`{"gopher-word":"%s"}`, translateAndAdd(englishWord["english-word"])))
 	fmt.Fprint(res, "\n")
 }
 
 func translateAndAdd(word string) string {
-
+	wordsList = append(wordsList, word)
+	sort.Slice(wordsList, func(i, j int) bool {
+		return wordsList[i] < wordsList[j]
+	})
+	wordsMap[word] = translate(word)
+	log.Printf(`
+	The words now are: %v
+	The list now is:   %v
+`, wordsMap, wordsList)
 	return word
+}
+
+func orderByEnglish() {
+
+}
+
+func translate(word string) string {
+	if re_vowels.MatchString(word) {
+		return "g" + word
+	}
+	if re_xr.MatchString(word) {
+		return "ge" + word
+	}
+	//if(yes, err = re_xr)
+	return fmt.Sprintf("tr%s", word)
 }
